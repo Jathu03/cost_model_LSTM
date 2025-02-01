@@ -8,11 +8,11 @@ dependencies:
   - cudatoolkit=11.3.1
   - python=3.10.6
   - pytorch=1.12.1
-  - scipy==1.9.1
-  - numpy==1.22.3
-  - pandas==1.4.1
-  - scikit-learn==1.1.2
-  - sympy==1.12
+  - scipy=1.9.1
+  - numpy=1.22.3
+  - pandas=1.4.1
+  - scikit-learn=1.1.2
+  - sympy=1.12
   - pip
   - pip:
       - hydra-core==1.1.2
