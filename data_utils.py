@@ -1,6 +1,6 @@
 import copy
 import json
-from msilib import make_id
+#from msilib import make_id
 import pickle
 import random
 import re
