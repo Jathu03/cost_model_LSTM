@@ -79,7 +79,7 @@ def main(conf):
     
     # Training
     train_file_path = os.path.join( conf.experiment.base_path, "batched/train/", f"{Path(conf.data_generation.train_dataset_file).parts[-1][:-4]}_CPU.pt")
-    print(train_file_path)
+    print("Train file path is: ",train_file_path)
     if os.path.exists(train_file_path):
         print(f"Loading second part of the training set {train_file_path} into the CPU")
         with open(train_file_path, "rb") as file:
