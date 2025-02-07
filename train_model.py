@@ -136,7 +136,7 @@ def main(conf):
         num_epochs=conf.training.max_epochs,
         logger=logger,
         log_every=1,
-        train_device="gpu",
+        train_device="cuda",
         validation_device=conf.training.validation_gpu,
         max_batch_size=conf.data_generation.batch_size,
     )
