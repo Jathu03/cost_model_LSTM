@@ -5,186 +5,140 @@ import random
 import gc
 import hydra
 from hydra.core.config_store import ConfigStore
-from pathlib import Path
-import torch
-from torch_geometric.data import DataLoader
-from data_utils import *
-from modeling import GNNCostModel
+from data_utilsg import *
+from modeling import *
 from train_utils import *
-
-def load_graph_batches_from_path(train_paths, train_devices, val_paths):
-    """Load and prepare graph batches from saved paths."""
+def load_batches_from_path(train_paths, train_devices, val_paths):
     assert(len(train_paths)>0 and len(val_paths)>0)
     assert(len(train_paths) == len(train_devices))
     train_bl = []
     val_bl = []
-    
-    # Load training data
+    # Read batches from specified paths
     for index, path in enumerate(train_paths):
         if os.path.exists(path):
-            print(f"Loading training data from {path} into {train_devices[index]}")
+            print(f"Loading second part of the training set {path} into {train_devices[index]}")
             with open(path, "rb") as file:
-                batch_data = torch.load(path, map_location=train_devices[index])
-                # Convert to graph format if needed
-                graph_batch = convert_to_graph_batch(batch_data, train_devices[index])
-                train_bl += graph_batch
-                
-    # Load validation data
+                train_bl_2 = torch.load(path, map_location=train_devices[index])
+                train_bl += train_bl_2
     for path in val_paths:
         if os.path.exists(path):
-            print(f"Loading validation data from {path} into CPU")
+            print(f"Loading second part of the validation set {path} into the CPU")
             with open(path, "rb") as file:
-                batch_data = torch.load(path, map_location="cpu")
-                # Convert to graph format if needed
-                graph_batch = convert_to_graph_batch(batch_data, "cpu")
-                val_bl += graph_batch
+                val_bl_2 = torch.load(path, map_location="cpu")
+                val_bl += val_bl_2
     
-    # Shuffle datasets
+    # Shuffle both training and validation sets
     random.shuffle(train_bl)
     random.shuffle(val_bl)
     
     return train_bl, val_bl
-
-def convert_to_graph_batch(batch_data, device):
-    """Convert traditional batch data to graph format."""
-    graph_batch = []
-    for data in batch_data:
-        # Extract features and build graph structure
-        inputs, labels = data
-        tree, comps_first, comps_vectors, comps_third, loops_tensor, expr_tree = inputs
-        
-        # Create graph data structure
-        node_features, edge_index = build_graph_from_tree(
-            tree, comps_first, comps_vectors, comps_third, 
-            loops_tensor, expr_tree, device
-        )
-        
-        graph_data = Data(
-            x=node_features,
-            edge_index=edge_index,
-            y=labels
-        )
-        graph_batch.append(graph_data)
-    
-    return graph_batch
-
 @hydra.main(config_path="conf", config_name="config")
 def main(conf):
-    # Setup logging
+    # Defining logger
     log_filename = [part for part in conf.training.log_file.split('/') if len(part) > 3][-1]
     log_folder_path = os.path.join(conf.experiment.base_path, "logs/")
-    os.makedirs(log_folder_path, exist_ok=True)
-    
+    if not os.path.exists(log_folder_path):
+        os.makedirs(log_folder_path)
     log_file = os.path.join(log_folder_path, log_filename)
-    logging.basicConfig(
-        filename=log_file,
-        filemode='a',
-        level=logging.DEBUG,
-        format='%(asctime)s:%(levelname)s: %(message)s'
-    )
+    logging.basicConfig(filename = log_file,
+                        filemode='a',
+                        level = logging.DEBUG,
+                        format = '%(asctime)s:%(levelname)s:  %(message)s')
     logging.info(f"Starting experiment {conf.experiment.name}")
     
-    # Set devices
+    # We train on the device set by the user in the conf file
     train_device = torch.device(conf.training.training_gpu)
-    validation_device = torch.device(conf.training.validation_gpu)
     
-    # Initialize GNN model
-    logging.info("Defining the GNN model")
-    model = GNNCostModel(
+    # If a GPU is being used for validation, we use it otherwise we use the cpu
+    validation_device = torch.device(conf.training.validation_gpu)
+    # Defining the model
+    logging.info("Defining the model")
+    model = Model_Recursive_LSTM_v2(
         input_size=conf.model.input_size,
-        hidden_size=conf.model.hidden_size,
-        num_gnn_layers=conf.model.num_gnn_layers,
-        num_attention_heads=conf.model.num_attention_heads,
-        dropout=conf.model.dropout,
-        device=train_device
+        comp_embed_layer_sizes=list(conf.model.comp_embed_layer_sizes),
+        drops=list(conf.model.drops),
+        loops_tensor_size=8,
+        device=train_device,
     )
     
-    # Load pretrained weights if continuing training
+    # Load model weights and continue training if specified  
     if conf.training.continue_training:
         print(f"Continue training using model from {conf.training.model_weights_path}")
-        model.load_state_dict(
-            torch.load(conf.training.model_weights_path, map_location=train_device)
-        )
+        model.load_state_dict(torch.load(conf.training.model_weights_path, map_location=train_device))
     
-    # Enable gradient tracking
+    # Enable gradient tracking for training
     for param in model.parameters():
         param.requires_grad = True
+        
+    # Reading data
+    logging.info("Reading the dataset")
+    train_bl_1 = []
+    train_bl_2 = []
+    val_bl_1 = []
+    val_bl_2 = []
     
-    # Load training data
-    logging.info("Loading datasets")
-    train_data = []
-    val_data = []
-    
-    # Load training data parts
-    train_cpu_path = os.path.join(
-        conf.experiment.base_path, 
-        "batched/train/", 
-        f"{Path(conf.data_generation.train_dataset_file).parts[-1][:-4]}_CPU.pt"
-    )
-    train_gpu_path = os.path.join(
-        conf.experiment.base_path, 
-        "batched/train/", 
-        f"{Path(conf.data_generation.train_dataset_file).parts[-1][:-4]}_GPU.pt"
-    )
-    
-    # Load CPU part if exists
-    if os.path.exists(train_cpu_path):
-        print(f"Loading CPU training data from {train_cpu_path}")
-        with open(train_cpu_path, "rb") as file:
-            train_cpu_data = torch.load(train_cpu_path, map_location="cpu")
-            train_data += convert_to_graph_batch(train_cpu_data, "cpu")
-    
-    # Load GPU part
-    print(f"Loading GPU training data into {conf.training.training_gpu}")
-    with open(train_gpu_path, "rb") as file:
-        train_gpu_data = torch.load(train_gpu_path, map_location=train_device)
-        train_data += convert_to_graph_batch(train_gpu_data, train_device)
-    
-    # Load validation data parts
-    val_cpu_path = os.path.join(
-        conf.experiment.base_path, 
-        "batched/valid/", 
-        f"{Path(conf.data_generation.valid_dataset_file).parts[-1][:-4]}_CPU.pt"
-    )
-    val_gpu_path = os.path.join(
-        conf.experiment.base_path, 
-        "batched/valid/", 
-        f"{Path(conf.data_generation.valid_dataset_file).parts[-1][:-4]}_GPU.pt"
-    )
-    
-    # Load validation data similarly
-    if os.path.exists(val_cpu_path):
-        with open(val_cpu_path, "rb") as file:
-            val_cpu_data = torch.load(val_cpu_path, map_location="cpu")
-            val_data += convert_to_graph_batch(val_cpu_data, "cpu")
+    # Training
+    train_file_path = os.path.join( conf.experiment.base_path, "batched/train/", f"{Path(conf.data_generation.train_dataset_file).parts[-1][:-4]}_CPU.pt")
+    if os.path.exists(train_file_path):
+        print(f"Loading second part of the training set {train_file_path} into the CPU")
+        with open(train_file_path, "rb") as file:
+            train_bl_2 = torch.load(train_file_path, map_location="cpu")
             
-    with open(val_gpu_path, "rb") as file:
-        val_gpu_data = torch.load(val_gpu_path, map_location=validation_device)
-        val_data += convert_to_graph_batch(val_gpu_data, validation_device)
+    train_file_path = os.path.join(conf.experiment.base_path, "batched/train/", f"{Path(conf.data_generation.train_dataset_file).parts[-1][:-4]}_GPU.pt")
     
-    # Create data loaders
-    train_loader = DataLoader(
-        train_data, 
-        batch_size=conf.data_generation.batch_size, 
-        shuffle=True
-    )
-    val_loader = DataLoader(
-        val_data, 
-        batch_size=conf.data_generation.batch_size, 
-        shuffle=False
-    )
+    print(f"Loading first part of the training set {train_file_path} into device number : {conf.training.training_gpu}")
+    with open(train_file_path, "rb") as file:
+        train_bl_1 = torch.load(train_file_path, map_location=train_device)
     
-    # Setup training
+    # Fuse loaded training batches
+    train_bl = train_bl_1 + train_bl_2 if len(train_bl_2) > 0 else train_bl_1
+    # Validation
+    validation_file_path = os.path.join( conf.experiment.base_path, "batched/valid/", f"{Path(conf.data_generation.valid_dataset_file).parts[-1][:-4]}_CPU.pt")
+    if os.path.exists(validation_file_path):
+        print(f"Loading second part of the validation set {validation_file_path} into the CPU")
+        with open(validation_file_path, "rb") as file:
+            val_bl_2 = torch.load(validation_file_path, map_location="cpu")
+            
+    validation_file_path = os.path.join(conf.experiment.base_path, "batched/valid/", f"{Path(conf.data_generation.valid_dataset_file).parts[-1][:-4]}_GPU.pt")
+    
+    print(f"Loading first part of the validation set {validation_file_path} into device: {conf.training.validation_gpu}")
+    with open(validation_file_path, "rb") as file:
+        val_bl_1 = torch.load(validation_file_path, map_location=validation_device)
+    
+    # Fuse loaded training batches
+    val_bl = val_bl_1 + val_bl_2 if len(val_bl_2) > 0 else val_bl_1
+        
+    # Defining training params
     criterion = mape_criterion
     optimizer = torch.optim.AdamW(
-        model.parameters(), 
-        lr=conf.training.lr, 
-        weight_decay=0.15e-1
+        model.parameters(), lr=conf.training.lr, weight_decay=0.15e-1
     )
     logger = logging.getLogger()
-    
-    # Initialize wandb if enabled
     if conf.wandb.use_wandb:
-        wandb.init(name=conf.experiment.name, project=conf.wandb.project)
+        # Intializing wandb
+        wandb.init(name = conf.experiment.name, project=conf.wandb.project)
         wandb.config = dict(conf)
-        wandb.watch
+        wandb.watch(model)
+    
+    # Training
+    print("Training the model")
+    bl_dict = {"train": train_bl, "val": val_bl}
+    
+    train_model(
+        config=conf,
+        model=model,
+        criterion=criterion,
+        optimizer=optimizer,
+        max_lr=conf.training.lr,
+        dataloader=bl_dict,
+        num_epochs=conf.training.max_epochs,
+        logger=logger,
+        log_every=1,
+        train_device=train_device,
+        validation_device=conf.training.validation_gpu,
+        max_batch_size=conf.data_generation.batch_size,
+    )
+
+
+if __name__ == "__main__":
+    main()
