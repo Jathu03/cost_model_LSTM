@@ -35,6 +35,7 @@ def load_batches_from_path(train_paths, train_devices, val_paths):
 @hydra.main(config_path="conf", config_name="config")
 def main(conf):
     # Defining logger
+    conf.experiment.base_path ="/home/kowrisaan/jathu/cost_model_LSTM"
     log_filename = [part for part in conf.training.log_file.split('/') if len(part) > 3][-1]
     log_folder_path = os.path.join(conf.experiment.base_path, "logs/")
     if not os.path.exists(log_folder_path):
