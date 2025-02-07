@@ -7,7 +7,7 @@ from modeling import *
 from train_utils import * 
 
 
-@hydra.main(config_path="C:/SJ/FYP/Environment/conf", config_name="config")
+@hydra.main(config_path="/home/kowrisaan/jathu/cost_model_LSTM", config_name="config")
 def generate_datasets(conf):
     """Converts and split into batches the validation and training dataset.
 
