@@ -1,11 +1,11 @@
 experiment:
   name: "gnn_test" # Adjusted for GNN experiment
-  base_path: "C:/SJ/FYP/Environment"
+  base_path: "/home/kowrisaan/jathu/cost_model_LSTM"
 
 data_generation:
-  train_dataset_file: "C:/SJ/FYP/Environment/data/train_data_sample_500-programs_60k-schedules.pkl"
-  valid_dataset_file: "C:/SJ/FYP/Environment/data/val_data_sample_125-programs_20k-schedules.pkl"
-  benchmark_dataset_file: "C:/SJ/FYP/Environment/data"
+  train_dataset_file: "/home/kowrisaan/jathu/cost_model_LSTM/data/train_data_sample_500-programs_60k-schedules.pkl"
+  valid_dataset_file: "/home/kowrisaan/jathu/cost_model_LSTM/data/val_data_sample_125-programs_20k-schedules.pkl"
+  benchmark_dataset_file: "/home/kowrisaan/jathu/cost_model_LSTM/data"
   batch_size: 2048
   nb_processes: 4
   min_functions_per_tree_footprint: 2
@@ -17,10 +17,10 @@ training:
   training_gpu: "cpu"
   validation_gpu: "cpu"
   continue_training: False
-  model_weights_path: "C:/SJ/FYP/Environment/weights"
+  model_weights_path: "/home/kowrisaan/jathu/cost_model_LSTM/weights"
 
 testing:
-  testing_model_weights_path: "C:/SJ/FYP/Environment/weights/best_model_gnn_test.pt"
+  testing_model_weights_path: "/home/kowrisaan/jathu/cost_model_LSTM/weights/best_model_gnn_test.pt"
   gpu: "cpu"
 
 wandb:
