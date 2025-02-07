@@ -1,10 +1,10 @@
 import hydra  # type: ignore
 import gc
 import shutil
-from hydra.core.config_store import ConfigStore # type: ignore
-from data_utils import * # type: ignore
-from modeling1 import * # type: ignore
-from train_utils import * # type: ignore
+from hydra.core.config_store import ConfigStore 
+from data_utils import * 
+from modeling import *
+from train_utils import * 
 
 
 @hydra.main(config_path="C:/SJ/FYP/Environment/conf", config_name="config")
