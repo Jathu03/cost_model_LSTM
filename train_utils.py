@@ -3,37 +3,20 @@ import math
 import os
 import random
 import time
-import torch
-import wandb
-from torch.optim.lr_scheduler import OneCycleLR
+import torch # type: ignore
+#import wandb
+from torch.optim.lr_scheduler import OneCycleLR # type: ignore
 from tqdm import tqdm
-import torch.nn.functional as F
-from torch_geometric.data import Batch, Data
 
+import torch # type: ignore
+import torch.nn.functional as F # type: ignore
+import torch.distributed as dist # type: ignore
+import torch.multiprocessing as mp # type: ignore
+import os
+# Calculate the mean absolute percentage error
 def mape_criterion(inputs, targets):
-    """Calculate mean absolute percentage error with epsilon smoothing."""
     eps = 1e-5
     return 100 * torch.mean(torch.abs(targets - inputs) / (targets + eps))
-
-def prepare_batch_for_gnn(batch, device):
-    """Convert batch data to GNN format."""
-    graphs = []
-    for input_data in batch[0]:
-        # Extract graph data from input
-        node_features, edge_index = input_data
-        
-        # Create PyG Data object
-        graph = Data(
-            x=node_features.to(device),
-            edge_index=edge_index.to(device),
-        )
-        graphs.append(graph)
-    
-    # Combine into a batch
-    batched_graphs = Batch.from_data_list(graphs)
-    labels = batch[1].to(device)
-    
-    return batched_graphs, labels
 
 def train_model(
     config,
@@ -47,8 +30,9 @@ def train_model(
     logger,
     train_device,
     validation_device,
-    max_batch_size=1024,
+    max_batch_size = 1024,
 ):
+
     since = time.time()
     losses = []
     train_loss = 0
@@ -56,8 +40,7 @@ def train_model(
     best_model = None
     hash = random.getrandbits(16)
     dataloader_size = {"train": 0, "val": 0}
-    
-    # Calculate dataset sizes
+    # Calculate data size for each dataset. Used to caluclate the loss duriing the training  
     for item in dataloader["train"]:
         label = item[1]
         dataloader_size["train"] += label.shape[0]
@@ -65,124 +48,141 @@ def train_model(
         label = item[1]
         dataloader_size["val"] += label.shape[0]
     
-    # Learning rate scheduler
+    # Use the 1cycle learning rate policy
     scheduler = OneCycleLR(
         optimizer,
         max_lr=max_lr,
         steps_per_epoch=len(dataloader["train"]),
         epochs=num_epochs,
     )
-    
     for epoch in range(num_epochs):
         epoch_start = time.time()
-        
         for phase in ["train", "val"]:
             if phase == "train":
+                # Enable gradient tracking for training
                 model.train()
                 device = train_device
             else:
+                # Disable gradient tracking for evaluation
                 model.eval()
-                device = validation_device if validation_device != "cpu" else validation_device
-            
-            # Move model to device
+                # If the user wants to run the validation on another GPU
+                if (validation_device != "cpu"):
+                    device = validation_device
+            # Send model to the training device
             model = model.to(device)
             model.device = device
             
             running_loss = 0.0
-            running_attention = 0.0  # Track attention metrics
             pbar = tqdm(dataloader[phase])
             
-            for batch_idx, (inputs, labels) in enumerate(pbar):
-                # Prepare batch for GNN processing
-                graph_batch, labels = prepare_batch_for_gnn((inputs, labels), device)
+            # For each batch in the dataset 
+            for inputs, labels in pbar:                # Send the labels and inputs to the training device
+                original_device = labels.device
+                inputs = (
+                    inputs[0],
+                    inputs[1].to(device),
+                    inputs[2].to(device),
+                    inputs[3].to(device),
+                    inputs[4].to(device),
+                    inputs[5].to(device),
+                )
+                labels = labels.to(device)
                 
+                # Reset the gradients for all tensors
                 optimizer.zero_grad()
 
                 with torch.set_grad_enabled(phase == "train"):
-                    # Forward pass
-                    outputs, attention_weights = model(graph_batch)
+                    # Get the model predictions
+                    outputs = model(inputs)
                     assert outputs.shape == labels.shape
                     
-                    # Calculate loss
-                    loss = criterion(outputs, labels) * labels.shape[0] / max_batch_size
-                    
-                    # Track attention metrics
-                    if attention_weights is not None:
-                        running_attention += attention_weights.mean().item()
+                    # Calculate the loss
+                    loss = criterion(outputs, labels)*labels.shape[0]/max_batch_size
                     
                     if phase == "train":
+                        # Backpropagation
                         loss.backward()
                         optimizer.step()
-                
-                # Update progress bar
-                pbar.set_description(
-                    f"Loss: {loss.item():.3f}, Attention: {running_attention/(batch_idx+1):.3f}"
-                )
-                
+                pbar.set_description("Loss: {:.3f}".format(loss.item()))
                 running_loss += loss.item() * max_batch_size
-                
+                # Send the labels back to the original device 
+                labels = labels.to(original_device)
+                epoch_end = time.time()
             epoch_loss = running_loss / dataloader_size[phase]
-            epoch_attention = running_attention / len(dataloader[phase])
-            
             if phase == "val":
+                # Append loss to the list of validation losses
                 losses.append((train_loss, epoch_loss))
-                
-                # Save best model
+                # If we reached a new minimum loss
                 if epoch_loss <= best_loss:
                     best_loss = epoch_loss
+                    # Save the model weights at this checkpoint
                     best_model = copy.deepcopy(model)
                     saved_model_path = os.path.join(config.experiment.base_path, "weights/")
-                    os.makedirs(saved_model_path, exist_ok=True)
-                    
+                    if not os.path.exists(saved_model_path):
+                        os.makedirs(saved_model_path)
                     full_path = os.path.join(
-                        saved_model_path,
-                        f"best_model_{config.experiment.name}_{hash:4x}.pt",
-                    )
+                            saved_model_path,
+                            f"best_model_{config.experiment.name}_{hash:4x}.pt",
+                        )
                     logger.debug(f"Saving checkpoint to {full_path}")
-                    torch.save(model.state_dict(), full_path)
-                
-                # Log metrics
-                if config.wandb.use_wandb:
-                    wandb.log({
-                        "best_msle": best_loss,
-                        "train_msle": train_loss,
-                        "val_msle": epoch_loss,
-                        "attention_score": epoch_attention,
-                        "epoch": epoch,
-                    })
-                
-                # Print progress
+                    torch.save(
+                        model.state_dict(),
+                        full_path,
+                    )
+                # Track progress using the wandb platform
+                '''if config.wandb.use_wandb:
+                    wandb.log(
+                        {
+                            "best_msle": best_loss,
+                            "train_msle": train_loss,
+                            "val_msle": epoch_loss,
+                            "epoch": epoch,
+                        }
+                    )'''
                 print(
-                    f"Epoch {epoch + 1}/{num_epochs}:  "
-                    f"train Loss: {train_loss:.4f}   "
-                    f"val Loss: {epoch_loss:.4f}   "
-                    f"attention: {epoch_attention:.4f}   "
-                    f"time: {time.time() - epoch_start:.2f}s   "
-                    f"best: {best_loss:.4f}"
+                    "Epoch {}/{}:  "
+                    "train Loss: {:.4f}   "
+                    "val Loss: {:.4f}   "
+                    "time: {:.2f}s   "
+                    "best: {:.4f}".format(
+                        epoch + 1,
+                        num_epochs,
+                        train_loss,
+                        epoch_loss,
+                        epoch_end - epoch_start,
+                        best_loss,
+                    )
                 )
-                
                 if epoch % log_every == 0:
                     logger.info(
-                        f"Epoch {epoch + 1}/{num_epochs}:  "
-                        f"train Loss: {train_loss:.4f}   "
-                        f"val Loss: {epoch_loss:.4f}   "
-                        f"attention: {epoch_attention:.4f}   "
-                        f"time: {time.time() - epoch_start:.2f}s   "
-                        f"best: {best_loss:.4f}"
+                        "Epoch {}/{}:  "
+                        "train Loss: {:.4f}   "
+                        "val Loss: {:.4f}   "
+                        "time: {:.2f}s   "
+                        "best: {:.4f}".format(
+                            epoch + 1,
+                            num_epochs,
+                            train_loss,
+                            epoch_loss,
+                            epoch_end - epoch_start,
+                            best_loss,
+                        )
                     )
             else:
                 train_loss = epoch_loss
                 scheduler.step()
-
     time_elapsed = time.time() - since
-    
+
     print(
-        f"Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s   "
-        f"best validation loss: {best_loss:.4f}"
+        "Training complete in {:.0f}m {:.0f}s   "
+        "best validation loss: {:.4f}".format(
+            time_elapsed // 60, time_elapsed % 60, best_loss
+        )
     )
     logger.info(
-        f"-----> Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s   "
-        f"best validation loss: {best_loss:.4f}\n"
+        "-----> Training complete in {:.0f}m {:.0f}s   "
+        "best validation loss: {:.4f}\n ".format(
+            time_elapsed // 60, time_elapsed % 60, best_loss
+        )
     )
-    
     return losses, best_model
