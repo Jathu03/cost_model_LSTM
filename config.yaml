@@ -1,6 +1,6 @@
 experiment:
   name: "gnn_test" # Adjusted for GNN experiment
-  base_path: 
+  base_path: "/home/kowrisaan/jathu/cost_model_LSTM"
 
 data_generation:
   train_dataset_file: "/home/kowrisaan/jathu/cost_model_LSTM/data/train_data_sample_500-programs_60k-schedules.pkl"
