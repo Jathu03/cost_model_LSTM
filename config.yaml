@@ -1,0 +1,64 @@
+experiment:
+  name: "gnn_test" # Adjusted for GNN experiment
+  base_path: "C:/SJ/FYP/Environment"
+
+data_generation:
+  train_dataset_file: "C:/SJ/FYP/Environment/data/train_data_sample_500-programs_60k-schedules.pkl"
+  valid_dataset_file: "C:/SJ/FYP/Environment/data/val_data_sample_125-programs_20k-schedules.pkl"
+  benchmark_dataset_file: "C:/SJ/FYP/Environment/data"
+  batch_size: 2048
+  nb_processes: 4
+  min_functions_per_tree_footprint: 2
+
+training:
+  log_file: "gnn_logs.txt"
+  lr: 0.001
+  max_epochs: 10
+  training_gpu: "cpu"
+  validation_gpu: "cpu"
+  continue_training: False
+  model_weights_path: "C:/SJ/FYP/Environment/weights"
+
+testing:
+  testing_model_weights_path: "C:/SJ/FYP/Environment/weights/best_model_gnn_test.pt"
+  gpu: "cpu"
+
+wandb:
+  use_wandb: False
+  project: "gnn_release_model"
+
+model:
+  input_size: 846 # Size of the input. Here we specify the size of the computation vector.
+  comp_embed_layer_sizes:
+    - 600
+    - 350
+    - 200
+    - 180
+
+  dropout_prob: 0.05
+  drops: # Dropout layers probabilities
+    - 0.050
+    - 0.050
+    - 0.050
+    - 0.050
+    - 0.050
+
+models:
+  input_size: 846 # Size of the input. Computation vector size remains unchanged.
+  comp_embed_layer_sizes:
+    - 600
+    - 350
+    - 200
+    - 180
+  dropout_prob: 0.05
+  drops: # Dropout layers probabilities
+    - 0.05
+    - 0.05
+    - 0.05
+    - 0.05
+    - 0.05
+  tree_hidden_size: 100 # Hidden size for the TreeLSTM (new parameter)
+  expr_embed_size: 100 # Embedding size for expressions (can remain unchanged)
+
+defaults:
+  - override hydra/job_logging: disabled
