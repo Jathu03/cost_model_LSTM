@@ -597,7 +597,7 @@ class Dataset_parallel:
                     torch.FloatTensor(batch_data['speedups'][i:end_idx]).to(storing_device)
                 )
                 self.batched_datapoint_attributes.append(
-                    batch_data['datapoint_attributes'][i:end_idx]  
+                    batch_data['datapoint_attributes'][i:end_idx]  )
 
 # Function to read the pkls written by the load_data_into_pkls_parallel function, batch the loaded data and return the batched data to be saved
 def load_pickled_repr(
