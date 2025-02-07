@@ -7,7 +7,7 @@ data_generation:
   valid_dataset_file: "/home/kowrisaan/jathu/cost_model_LSTM/data/val_data_sample_125-programs_20k-schedules.pkl"
   benchmark_dataset_file: "/home/kowrisaan/jathu/cost_model_LSTM/data"
   batch_size: 2048
-  nb_processes: 4
+  nb_processes: 8
   min_functions_per_tree_footprint: 2
 
 training:
