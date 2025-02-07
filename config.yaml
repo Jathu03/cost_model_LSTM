@@ -14,8 +14,8 @@ training:
   log_file: "gnn_logs.txt"
   lr: 0.001
   max_epochs: 10
-  training_gpu: "cpu"
-  validation_gpu: "cpu"
+  training_gpu: "gpu"
+  validation_gpu: "gpu"
   continue_training: False
   model_weights_path: "/home/kowrisaan/jathu/cost_model_LSTM/weights"
 
