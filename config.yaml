@@ -13,9 +13,9 @@ data_generation:
 training:
   log_file: "gnn_logs.txt"
   lr: 0.001
-  max_epochs: 10
-  training_gpu: "gpu"
-  validation_gpu: "gpu"
+  max_epochs: 100
+  training_gpu: "cuda"
+  validation_gpu: "cuda"
   continue_training: False
   model_weights_path: "/home/kowrisaan/jathu/cost_model_LSTM/weights"
 
@@ -42,23 +42,6 @@ model:
     - 0.050
     - 0.050
     - 0.050
-
-models:
-  input_size: 846 # Size of the input. Computation vector size remains unchanged.
-  comp_embed_layer_sizes:
-    - 600
-    - 350
-    - 200
-    - 180
-  dropout_prob: 0.05
-  drops: # Dropout layers probabilities
-    - 0.05
-    - 0.05
-    - 0.05
-    - 0.05
-    - 0.05
-  tree_hidden_size: 100 # Hidden size for the TreeLSTM (new parameter)
-  expr_embed_size: 100 # Embedding size for expressions (can remain unchanged)
 
 defaults:
   - override hydra/job_logging: disabled
