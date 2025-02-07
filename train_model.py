@@ -5,7 +5,7 @@ import random
 import gc
 import hydra
 from hydra.core.config_store import ConfigStore
-from data_utilsg import *
+from data_utils import *
 from modeling import *
 from train_utils import *
 def load_batches_from_path(train_paths, train_devices, val_paths):
