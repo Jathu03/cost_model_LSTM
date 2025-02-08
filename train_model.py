@@ -32,7 +32,7 @@ def load_batches_from_path(train_paths, train_devices, val_paths):
     random.shuffle(val_bl)
     
     return train_bl, val_bl
-@hydra.main(config_path="conf", config_name="config")
+@hydra.main(config_path="/home/kowrisaan/jathu/cost_model_LSTM/conf", config_name="config")
 def main(conf):
     # Defining logger
     #conf.experiment.base_path ="/home/kowrisaan/jathu/cost_model_LSTM"
