@@ -1,6 +1,5 @@
 # cost_model_LSTM: Halide Program Execution Time Prediction
 
-![Python](https://img.shields.io/badge/Language-Python-100%25-blue)
 ![Architecture](https://img.shields.io/badge/Model-LSTM-orange)
 ![Domain](https://img.shields.io/badge/Domain-Compiler%20Optimization-green)
 
